@@ -221,7 +221,7 @@ void run_multithreaded(Board &board, int iterations, bool print) {
         if(print) {
             std::stringstream buffer;
 
-            buffer << "\033[2J\033[H"; // Clear screen and move cursor to home position
+            buffer << "\033[2J\033[H";
 
             for (const Cell& cell : board) {
                 unsigned int r = cell.first, c = cell.second;
@@ -229,12 +229,11 @@ void run_multithreaded(Board &board, int iterations, bool print) {
                 buffer << "□";
             }
 
-
             // Print the entire buffer to std::cout in one go
             clearScreen();
-            printf("%s", buffer.str().c_str());
-            //std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            std::cout << buffer.str();
             std::cout.flush();
+            std::this_thread::sleep_for(std::chrono::milliseconds(30));
         }
 
         threaded_get_next_board(board, threads, num_threads);
@@ -246,6 +245,7 @@ int main() {
     //std::string RLE_file = "2c5-spaceship-gun-p416.txt";
     //std::string RLE_file = "smaller-ship.txt";
     std::string RLE_file = "oscillator.txt";
+    //std::string RLE_file = "queen_bee.txt";
 
     std::ifstream file(RLE_file);
 
