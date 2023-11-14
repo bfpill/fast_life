@@ -219,7 +219,6 @@ void run_multithreaded(Board &board, int iterations, bool print) {
 
     while(i < iterations){
         if(print) {
-            clearScreen();
             std::stringstream buffer;
 
             buffer << "\033[2J\033[H"; // Clear screen and move cursor to home position
@@ -232,8 +231,9 @@ void run_multithreaded(Board &board, int iterations, bool print) {
 
 
             // Print the entire buffer to std::cout in one go
+            clearScreen();
             printf("%s", buffer.str().c_str());
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            //std::this_thread::sleep_for(std::chrono::milliseconds(50));
             std::cout.flush();
         }
 
@@ -267,8 +267,8 @@ int main() {
 
     int iterations = 1000;
     bool print = true;
-    unsigned int board_height = 70;
-    unsigned int board_width = 70;
+    unsigned int board_height = board.size();
+    unsigned int board_width = board.size();
 
     //initialize_from_random_soup(board, board_height, board_width);
     initialize_from_RLE(board, RLE, board_width/2, board_height/2);
