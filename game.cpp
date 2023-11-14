@@ -14,8 +14,6 @@
 using Cell = std::pair<unsigned int, unsigned int>;
 using Board = std::set<Cell>;
 
-std::mutex new_board_mutex;
-
 Board get_neighbours(Cell c) {
     Board neighbours;
     for(int dx = -1; dx <= 1; dx++){
@@ -27,31 +25,6 @@ Board get_neighbours(Cell c) {
 
     return neighbours;
 }
-
-void get_next_board(Board &b) {
-    Board new_b;
-    Board candidates = b;
-
-    for(const Cell &c : b){
-        Board neighbours = get_neighbours(c);
-        candidates.insert(neighbours.begin(), neighbours.end());
-    }
-
-    for(const Cell &c : candidates){
-        int n_count = 0;
-
-        for(const Cell &n : get_neighbours(c)){
-            if(b.count(n)) n_count ++;
-        }
-
-        bool alive = b.count(c);
-        if(alive && (n_count == 2 || n_count == 3)) new_b.insert(c);
-        else if(!alive && n_count == 3) new_b.insert(c);
-    }
-
-    b = std::move(new_b);
-}
-
 
 void clearScreen() {
     #ifdef _WIN32
@@ -116,7 +89,6 @@ void initialize_from_RLE(Board& board, const std::string& rle,
 void update_section(const Board &b, Board &slice,
         size_t start_row, size_t end_row ) {
 
-    //Board new_section;
     Board candidates;
 
     auto it = b.begin();
@@ -145,8 +117,6 @@ void update_section(const Board &b, Board &slice,
         if(alive && (n_count == 2 || n_count == 3)) slice.insert(c);
         else if(!alive && n_count == 3) slice.insert(c);
     }
-    //std::lock_guard<std::mutex> lock(new_board_mutex);
-    //new_board.insert(new_section.begin(), new_section.end());
 }
 
 void threaded_get_next_board(
@@ -186,30 +156,6 @@ void threaded_get_next_board(
 
 }
 
-
-void run_single_threaded(Board &board, int iterations) {
-
-    int i = 0;
-
-    while(i < iterations){
-        clearScreen();
-
-        for (const Cell& cell : board) {
-          unsigned int r = cell.first, c = cell.second;
-
-          // This moves the cursor
-          std::cout << "\033[" << r + 1 << ";" << c + 1 << "H";
-          std::cout << "█";
-        }
-
-        std::cout.flush();
-
-        get_next_board(board);
-        i++;
-    }
-
-}
-
 void run_multithreaded(Board &board, int iterations, bool print) {
 
     int i = 0;
@@ -244,10 +190,10 @@ void run_multithreaded(Board &board, int iterations, bool print) {
 int main() {
     //std::string RLE_file = "2c5-spaceship-gun-p416.txt";
     //std::string RLE_file = "smaller-ship.txt";
-    std::string RLE_file = "oscillator.txt";
-    //std::string RLE_file = "queen_bee.txt";
+    //std::string RLE_file = "oscillator.txt";
+    std::string RLE_file = "queen_bee.txt";
 
-    std::ifstream file(RLE_file);
+    std::ifstream file("./rle_files/" + RLE_file);
 
     if (!file.is_open()) {
         std::cerr << "Error opening file: " << RLE_file << std::endl;
@@ -267,8 +213,8 @@ int main() {
 
     int iterations = 1000;
     bool print = true;
-    unsigned int board_height = board.size();
-    unsigned int board_width = board.size();
+    unsigned int board_height = board.size() + 2;
+    unsigned int board_width = board.size() + 2;
 
     //initialize_from_random_soup(board, board_height, board_width);
     initialize_from_RLE(board, RLE, board_width/2, board_height/2);
