@@ -9,6 +9,7 @@
 #include <set>
 #include <thread>
 #include <mutex>
+#include <fstream>
 
 using Cell = std::pair<unsigned int, unsigned int>;
 using Board = std::set<Cell>;
@@ -60,8 +61,22 @@ void clearScreen() {
     #endif
 }
 
+void initialize_from_random_soup(
+        Board &board, unsigned int width, unsigned int height) {
+
+    board = {};
+    for(int i = 0; i < height; i++){
+        for(int j = 0; j < width; j++){
+            int alive = rand() % 2 + 0.5;
+            if(alive == 1) board.insert({i, j});
+        }
+    }
+}
+
 void initialize_from_RLE(Board& board, const std::string& rle,
                                             int startX, int startY) {
+    board = {};
+
     int x = startX, y = startY;
     std::istringstream rleStream(rle);
     char ch;
@@ -98,10 +113,10 @@ void initialize_from_RLE(Board& board, const std::string& rle,
 }
 
 
-void update_section(const Board &b, Board &new_board,
+void update_section(const Board &b, Board &slice,
         size_t start_row, size_t end_row ) {
 
-    Board new_section;
+    //Board new_section;
     Board candidates;
 
     auto it = b.begin();
@@ -127,11 +142,11 @@ void update_section(const Board &b, Board &new_board,
         }
 
         bool alive = b.count(c);
-        if(alive && (n_count == 2 || n_count == 3)) new_section.insert(c);
-        else if(!alive && n_count == 3) new_section.insert(c);
+        if(alive && (n_count == 2 || n_count == 3)) slice.insert(c);
+        else if(!alive && n_count == 3) slice.insert(c);
     }
-    std::lock_guard<std::mutex> lock(new_board_mutex);
-    new_board.insert(new_section.begin(), new_section.end());
+    //std::lock_guard<std::mutex> lock(new_board_mutex);
+    //new_board.insert(new_section.begin(), new_section.end());
 }
 
 void threaded_get_next_board(
@@ -143,6 +158,8 @@ void threaded_get_next_board(
 
     Board next_board;
 
+    std::vector<Board> slices(num_threads);
+
     for(int i = 0; i < num_threads; i++){
         int start_row = i * rows_per_thread;
         int end_row = (i + 1) * rows_per_thread;
@@ -153,7 +170,7 @@ void threaded_get_next_board(
 
         threads[i] = std::thread(update_section,
                 std::ref(board),
-                std::ref(next_board),
+                std::ref(slices[i]),
                 start_row, end_row);
     }
 
@@ -161,75 +178,26 @@ void threaded_get_next_board(
         t.join();
     }
 
-    board = std::move(next_board);
-}
-
-void initialize_from_random_soup(
-        Board &board, unsigned int width, unsigned int height) {
-
-    for(int i = 0; i < height; i++){
-        for(int j = 0; j < width; j++){
-            int alive = rand() % 2 + 0.5;
-            if(alive == 1) board.insert({i, j});
-        }
+    for(const Board &slice : slices){
+        next_board.insert(slice.begin(), slice.end());
     }
+
+    board = std::move(next_board);
+
 }
 
 
-int main() {
+void run_single_threaded(Board &board, int iterations) {
 
-    const char *RLE = R""""(
-        26b2o16b2o$26b2o7b2o7b2o$35b2o5$10b2o48b2o$10b2o48b2o3$28bo14bo$28b3o10b3o2$
-29b3o8b3o5$18b2o32b2o$18b2o32b2o4$18b2o32b2o$18b2o32b2o5$29b3o8b3o2$28b3o10b
-3o$28bo14bo3$10b2o48b2o$10b2o48b2o5$35b2o$26b2o7b2o7b2o$26b2o16b2o4$8b3o$7bo
-2bo$7bo2bo$7b2o4$17b3o$17bo2bo$20bo$3o15b3o$o$o2bo$b3o4$12b2o$10bo2bo$10bo2bo
-$10b3o!
-    )"""";
-
-    Board board = {};
-
-    unsigned int board_height = 400;
-    unsigned int board_width = 200;
-
-    //initialize_from_RLE(board, RLE, board_width/2, board_height/2);
-    initialize_from_random_soup(board, board_height, board_width);
-
-    int iterations = 100;
     int i = 0;
 
-    int num_threads = std::thread::hardware_concurrency();
-    std::vector<std::thread> threads(num_threads);
-
-    auto start = std::chrono::high_resolution_clock::now();
-    while(i < iterations){
-        clearScreen();
-
-        for (const Cell& cell : board) {
-           unsigned int r = cell.first, c = cell.second;
-           //Position the cursor at the start of the changed cell
-           std::cout << "\033[" << r + 1 << ";" << c + 1 << "H";
-           std::cout << "█";
-        }
-
-        std::cout.flush();
-
-        threaded_get_next_board(board, threads, num_threads);
-        i++;
-    }
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed_threaded = end - start;
-
-    start = std::chrono::high_resolution_clock::now();
-
-    i = 0;
-
-    initialize_from_random_soup(board, board_height, board_width);
     while(i < iterations){
         clearScreen();
 
         for (const Cell& cell : board) {
           unsigned int r = cell.first, c = cell.second;
-          //Position the cursor at the start of the changed cell
+
+          // This moves the cursor
           std::cout << "\033[" << r + 1 << ";" << c + 1 << "H";
           std::cout << "█";
         }
@@ -239,14 +207,79 @@ $10b3o!
         get_next_board(board);
         i++;
     }
-    end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed_single = end - start;
 
-    std::cout << "Elapsed time Threaded: " <<
+}
+
+void run_multithreaded(Board &board, int iterations, bool print) {
+
+    int i = 0;
+
+    int num_threads = std::thread::hardware_concurrency();
+    std::vector<std::thread> threads(num_threads);
+
+    while(i < iterations){
+        if(print) {
+            clearScreen();
+            std::stringstream buffer;
+
+            buffer << "\033[2J\033[H"; // Clear screen and move cursor to home position
+
+            for (const Cell& cell : board) {
+                unsigned int r = cell.first, c = cell.second;
+                buffer << "\033[" << r + 1 << ";" << c + 1 << "H";
+                buffer << "□";
+            }
+
+
+            // Print the entire buffer to std::cout in one go
+            printf("%s", buffer.str().c_str());
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            std::cout.flush();
+        }
+
+        threaded_get_next_board(board, threads, num_threads);
+        //i++;
+    }
+}
+
+int main() {
+    //std::string RLE_file = "2c5-spaceship-gun-p416.txt";
+    //std::string RLE_file = "smaller-ship.txt";
+    std::string RLE_file = "oscillator.txt";
+
+    std::ifstream file(RLE_file);
+
+    if (!file.is_open()) {
+        std::cerr << "Error opening file: " << RLE_file << std::endl;
+        return 1;
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+
+    file.close();
+
+    std::string contents = buffer.str();
+
+    const char* RLE = contents.c_str();
+
+    Board board = {};
+
+    int iterations = 1000;
+    bool print = true;
+    unsigned int board_height = 70;
+    unsigned int board_width = 70;
+
+    //initialize_from_random_soup(board, board_height, board_width);
+    initialize_from_RLE(board, RLE, board_width/2, board_height/2);
+
+    auto start = std::chrono::high_resolution_clock::now();
+    run_multithreaded(board, iterations, print);
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed_threaded = end - start;
+
+    std::cout << "Elapsed time print: " <<
         elapsed_threaded.count() << " seconds" << std::endl;
-
-    std::cout << "Elapsed time single thread: " <<
-                elapsed_single.count() << " seconds" << std::endl;
 
     return 0;
 }
