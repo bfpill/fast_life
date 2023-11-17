@@ -1,0 +1,3 @@
+/Users/maxadam/Desktop/life/fast_life/build/CMakeFiles/shadered_game.dir
+/Users/maxadam/Desktop/life/fast_life/build/CMakeFiles/edit_cache.dir
+/Users/maxadam/Desktop/life/fast_life/build/CMakeFiles/rebuild_cache.dir

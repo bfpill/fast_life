@@ -1,37 +1,21 @@
 #include <array>
-#include <map>
 #include <stdlib.h>
 #include <iostream>
-#include <chrono>
-#include <thread>
 #include <sstream>
 #include <utility>
 #include <set>
 #include <thread>
-#include <mutex>
 #include <fstream>
 
-using Cell = std::pair<unsigned int, unsigned int>;
-using Board = std::set<Cell>;
-
-Board get_neighbours(Cell c) {
-    Board neighbours;
-    for(int dx = -1; dx <= 1; dx++){
-        for(int dy = -1; dy <= 1; dy++){
-            if(dx == 0 && dy == 0) continue;
-            neighbours.insert({c.first + dx, c.second + dy});
-        }
-    }
-
-    return neighbours;
-}
+#include "gl_utils.hpp"
+#include "game.hpp"
 
 void clearScreen() {
-    #ifdef _WIN32
+#ifdef _WIN32
     system("cls");
-    #else
+#else
     system("clear");
-    #endif
+#endif
 }
 
 void initialize_from_random_soup(
@@ -85,6 +69,17 @@ void initialize_from_RLE(Board& board, const std::string& rle,
     }
 }
 
+Board get_neighbours(Cell c) {
+    Board neighbours;
+    for(int dx = -1; dx <= 1; dx++){
+        for(int dy = -1; dy <= 1; dy++){
+            if(dx == 0 && dy == 0) continue;
+            neighbours.insert({c.first + dx, c.second + dy});
+        }
+    }
+
+    return neighbours;
+}
 
 void update_section(const Board &b, Board &slice,
         size_t start_row, size_t end_row ) {
@@ -122,13 +117,13 @@ void update_section(const Board &b, Board &slice,
 void threaded_get_next_board(
         Board &board,
         std::vector<std::thread> &threads,
-        int num_threads){
+        int num_threads,
+        std::vector<Board> &slices){
 
     int rows_per_thread = board.size() / num_threads;
 
     Board next_board;
 
-    std::vector<Board> slices(num_threads);
 
     for(int i = 0; i < num_threads; i++){
         int start_row = i * rows_per_thread;
@@ -137,7 +132,7 @@ void threaded_get_next_board(
         if(i == num_threads - 1){
             end_row = board.size() - 1;
         }
-
+        slices[i] = {};
         threads[i] = std::thread(update_section,
                 std::ref(board),
                 std::ref(slices[i]),
@@ -153,15 +148,15 @@ void threaded_get_next_board(
     }
 
     board = std::move(next_board);
-
 }
 
-void run_multithreaded(Board &board, int iterations, bool print) {
+void print_to_term(Board &board, const int iterations, const bool print) {
 
     int i = 0;
 
     int num_threads = std::thread::hardware_concurrency();
     std::vector<std::thread> threads(num_threads);
+    std::vector<Board> slices(num_threads);
 
     while(i < iterations){
         if(print) {
@@ -179,21 +174,21 @@ void run_multithreaded(Board &board, int iterations, bool print) {
             clearScreen();
             std::cout << buffer.str();
             std::cout.flush();
-            std::this_thread::sleep_for(std::chrono::milliseconds(30));
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
 
-        threaded_get_next_board(board, threads, num_threads);
-        //i++;
+        threaded_get_next_board(board, threads, num_threads, slices);
+        i++;
     }
 }
 
-int main() {
-    //std::string RLE_file = "2c5-spaceship-gun-p416.txt";
+int main(int argc, char** argv) {
+    std::string RLE_file = "2c5-spaceship-gun-p416.txt";
     //std::string RLE_file = "smaller-ship.txt";
     //std::string RLE_file = "oscillator.txt";
-    std::string RLE_file = "queen_bee.txt";
+    //std::string RLE_file = "queen_bee.txt";
 
-    std::ifstream file("./rle_files/" + RLE_file);
+    std::ifstream file("../rle_files/" + RLE_file);
 
     if (!file.is_open()) {
         std::cerr << "Error opening file: " << RLE_file << std::endl;
@@ -206,27 +201,14 @@ int main() {
     file.close();
 
     std::string contents = buffer.str();
-
     const char* RLE = contents.c_str();
 
     Board board = {};
-
-    int iterations = 1000;
-    bool print = true;
     unsigned int board_height = board.size() + 2;
     unsigned int board_width = board.size() + 2;
-
-    //initialize_from_random_soup(board, board_height, board_width);
     initialize_from_RLE(board, RLE, board_width/2, board_height/2);
 
-    auto start = std::chrono::high_resolution_clock::now();
-    run_multithreaded(board, iterations, print);
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed_threaded = end - start;
-
-    std::cout << "Elapsed time print: " <<
-        elapsed_threaded.count() << " seconds" << std::endl;
-
+    init_window(argc,  argv, board);
     return 0;
 }
 
